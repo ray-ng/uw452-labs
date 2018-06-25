@@ -3,7 +3,13 @@ package main
 import "os"
 import "fmt"
 import "mapreduce"
-import "container/list"
+import (
+	"container/list"
+	"unicode"
+	"strings"
+	"strconv"
+	"log"
+)
 
 // our simplified version of MapReduce does not supply a
 // key to the Map function, as in the paper; only a value,
@@ -13,7 +19,27 @@ func Map(value string) *list.List {
 	// You need to:
 	// (1) Split up the string into words, discarding any punctuation
 	// (2) Add each word to the list with a mapreduce.KeyValue struct
+	separator := func(r rune) bool {
+		return !unicode.IsLetter(r)
+	}
 
+	words := strings.FieldsFunc(value, separator)
+
+	m := make(map[string]int)
+	for _, word := range words {
+		if count, ok := m[word]; ok {
+			m[word] = count + 1
+		} else {
+			m[word] = 1
+		}
+	}
+
+	res := list.New()
+	for word, count := range m {
+		res.PushBack(mapreduce.KeyValue{word, strconv.Itoa(count)})
+	}
+
+	return res
 }
 
 // iterate over list and add values
@@ -24,6 +50,17 @@ func Reduce(key string, values *list.List) string {
 	// You need to:
 	// (1) Reduce the all of the values in the values list
 	// (2) Return the reduced/summed up values as a string
+
+	sum := 0
+	for kv := values.Front(); kv != nil ; kv = kv.Next() {
+		if count, err := strconv.Atoi(kv.Value.(string)); err != nil {
+			log.Fatal(err)
+		} else {
+			sum += count
+		}
+	}
+
+	return strconv.Itoa(sum)
 }
 
 // Can be run in 3 ways:
