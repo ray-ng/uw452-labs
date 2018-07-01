@@ -28,5 +28,59 @@ func (mr *MapReduce) KillWorkers() *list.List {
 
 func (mr *MapReduce) RunMaster() *list.List {
 	// Your code here
+	go mr.registerWorkers()
+
+	for i := 0; i < mr.nMap; i++ {
+		go mr.delegateJobs(Map, i)
+	}
+
+	for i := 0; i < mr.nMap; i++ {
+		<-mr.donechannel
+	}
+
+	for i := 0; i < mr.nReduce; i++ {
+		go mr.delegateJobs(Reduce, i)
+	}
+
+	for i := 0; i < mr.nReduce; i++ {
+		<-mr.donechannel
+	}
+
+	close(mr.cancelchannel)
+
 	return mr.KillWorkers()
+}
+
+func (mr *MapReduce) registerWorkers() {
+	for {
+		address := <-mr.registerChannel
+		mr.Workers[address] = &WorkerInfo{address}
+		mr.readychannel <- address
+	}
+}
+
+func (mr *MapReduce) delegateJobs(jobType JobType, jobNo int){
+	for {
+		worker := <-mr.readychannel
+		if ok := mr.assignJob(worker, jobType, jobNo); ok {
+			mr.donechannel <- true
+			select {
+				case mr.readychannel <- worker:
+				case <-mr.cancelchannel:
+			}
+			return
+		}
+	}
+}
+
+func (mr *MapReduce) assignJob(worker string, jobType JobType, jobNo int) bool{
+	var args DoJobArgs
+	switch jobType {
+	case Map:
+		args = DoJobArgs{mr.file, Map, jobNo, mr.nReduce}
+	case Reduce:
+		args = DoJobArgs{mr.file, Reduce, jobNo, mr.nMap}
+	}
+	var reply DoJobReply
+	return call(worker, "Worker.DoJob", args, &reply)
 }
